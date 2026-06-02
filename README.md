@@ -41,21 +41,19 @@ Os nomes das colunas podem ser livres. A planilha pode ter colunas chamadas
 
 ### Pelo GitHub
 
-Depois que o repositório estiver publicado no GitHub, a biblioteca pode ser
-instalada em qualquer computador com:
+A biblioteca pode ser instalada diretamente do GitHub com:
 
 ```bash
-python3 -m pip install git+https://github.com/SEU-USUARIO/dispropy.git
+python3 -m pip install git+https://github.com/bruno-acr/Dispropy.git
 ```
-
-Substitua `SEU-USUARIO` pelo nome da sua conta no GitHub.
 
 ### Localmente
 
-Entre na pasta do projeto:
+Clone o repositório:
 
 ```bash
-cd /Users/bruno/Documents/Developer/dispropy
+git clone https://github.com/bruno-acr/Dispropy.git
+cd Dispropy
 ```
 
 Instale a biblioteca em modo editavel:
@@ -473,7 +471,6 @@ IC975 = IC + 2.4 * (Obs + shrinkage)^(-0.5)
 Na pasta do projeto:
 
 ```bash
-cd /Users/bruno/Documents/Developer/dispropy
 python3 -m pytest
 ```
 
