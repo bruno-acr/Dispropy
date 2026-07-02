@@ -1,37 +1,47 @@
+import numpy as np
 import pandas as pd
 import pytest
 
 from dispropy.validation import validate_contingency_columns
 
 
-def test_validate_rejects_non_dataframe():
-    with pytest.raises(TypeError, match="pandas DataFrame"):
-        validate_contingency_columns({"A": [1]}, "A", "B", "C", "D")
+def table(**overrides):
+    values = {"A": [10], "B": [90], "C": [20], "D": [880]}
+    values.update(overrides)
+    return pd.DataFrame(values)
 
 
-def test_validate_rejects_missing_column():
-    df = pd.DataFrame({"A": [1], "B": [2], "C": [3]})
-
-    with pytest.raises(ValueError, match="Missing contingency column"):
-        validate_contingency_columns(df, "A", "B", "C", "D")
+def test_requires_dataframe():
+    with pytest.raises(TypeError, match="DataFrame"):
+        validate_contingency_columns({}, "A", "B", "C", "D")
 
 
-def test_validate_rejects_non_numeric_column():
-    df = pd.DataFrame({"A": [1], "B": ["x"], "C": [3], "D": [4]})
-
-    with pytest.raises(TypeError, match="must be numeric"):
-        validate_contingency_columns(df, "A", "B", "C", "D")
+def test_rejects_missing_column():
+    with pytest.raises(ValueError, match="not found"):
+        validate_contingency_columns(table().drop(columns="D"), "A", "B", "C", "D")
 
 
-def test_validate_rejects_negative_values():
-    df = pd.DataFrame({"A": [1], "B": [-2], "C": [3], "D": [4]})
-
-    with pytest.raises(ValueError, match="negative values"):
-        validate_contingency_columns(df, "A", "B", "C", "D")
+def test_rejects_nonnumeric_column():
+    with pytest.raises(TypeError, match="numeric"):
+        validate_contingency_columns(table(A=["10"]), "A", "B", "C", "D")
 
 
-def test_validate_rejects_missing_values():
-    df = pd.DataFrame({"A": [1], "B": [None], "C": [3], "D": [4]})
+def test_rejects_negative_values():
+    with pytest.raises(ValueError, match="greater than or equal to zero"):
+        validate_contingency_columns(table(A=[-1]), "A", "B", "C", "D")
 
-    with pytest.raises(ValueError, match="missing values"):
-        validate_contingency_columns(df, "A", "B", "C", "D")
+
+def test_rejects_missing_values():
+    with pytest.raises(ValueError, match="missing"):
+        validate_contingency_columns(table(A=[np.nan]), "A", "B", "C", "D")
+
+
+def test_rejects_all_zero_row():
+    with pytest.raises(ValueError, match=r"A\+B\+C\+D"):
+        validate_contingency_columns(
+            pd.DataFrame({"A": [0], "B": [0], "C": [0], "D": [0]}),
+            "A",
+            "B",
+            "C",
+            "D",
+        )

@@ -1,6 +1,4 @@
-"""Validation helpers for disproportionality contingency table columns."""
-
-from __future__ import annotations
+"""Validation helpers for 2x2 contingency tables."""
 
 from typing import Hashable
 
@@ -8,87 +6,49 @@ import pandas as pd
 from pandas.api.types import is_numeric_dtype
 
 
-ColumnName = Hashable
-
-
 def validate_contingency_columns(
     df: pd.DataFrame,
-    a_col: ColumnName,
-    b_col: ColumnName,
-    c_col: ColumnName,
-    d_col: ColumnName,
+    a_col: Hashable,
+    b_col: Hashable,
+    c_col: Hashable,
+    d_col: Hashable,
 ) -> None:
-    """Validate 2x2 contingency table columns in a pandas DataFrame.
+    """Validate columns representing A, B, C and D of a 2x2 table.
 
-    Parameters
-    ----------
-    df:
-        DataFrame containing the contingency table columns.
-    a_col, b_col, c_col, d_col:
-        Column names corresponding to A, B, C, and D.
-
-    Raises
-    ------
-    TypeError
-        If ``df`` is not a DataFrame or any selected column is not numeric.
-    ValueError
-        If any selected column is missing, contains missing values, or contains
-        negative values.
+    Raises clear errors for an invalid DataFrame, missing or duplicate column
+    references, nonnumeric values, missing values, and negative counts.
     """
     if not isinstance(df, pd.DataFrame):
         raise TypeError("df must be a pandas DataFrame.")
 
     columns = (a_col, b_col, c_col, d_col)
-    missing_columns = [column for column in columns if column not in df.columns]
-    if missing_columns:
-        missing = ", ".join(str(column) for column in missing_columns)
-        raise ValueError(f"Missing contingency column(s): {missing}.")
+    if len(set(columns)) != 4:
+        raise ValueError("a_col, b_col, c_col, and d_col must be distinct columns.")
 
-    columns_with_missing = [
-        column for column in columns if df[column].isna().any()
-    ]
-    if columns_with_missing:
-        with_missing = ", ".join(str(column) for column in columns_with_missing)
-        raise ValueError(
-            "Contingency columns cannot contain missing values. "
-            f"Column(s) with missing values: {with_missing}."
-        )
+    missing = [column for column in columns if column not in df.columns]
+    if missing:
+        raise ValueError(f"Contingency column(s) not found: {missing}.")
 
-    non_numeric_columns = [
-        column for column in columns if not is_numeric_dtype(df[column])
-    ]
-    if non_numeric_columns:
-        non_numeric = ", ".join(str(column) for column in non_numeric_columns)
-        raise TypeError(
-            "Contingency columns must be numeric. "
-            f"Non-numeric column(s): {non_numeric}."
-        )
+    nonnumeric = [column for column in columns if not is_numeric_dtype(df[column])]
+    if nonnumeric:
+        raise TypeError(f"Contingency column(s) must be numeric: {nonnumeric}.")
 
-    columns_with_negative_values = [
-        column for column in columns if (df[column] < 0).any()
-    ]
-    if columns_with_negative_values:
-        negative = ", ".join(
-            str(column) for column in columns_with_negative_values
-        )
-        raise ValueError(
-            "Contingency columns must contain values greater than or equal to "
-            f"zero. Column(s) with negative values: {negative}."
-        )
+    values = df.loc[:, list(columns)]
+    if values.isna().to_numpy().any():
+        raise ValueError("Contingency columns must not contain missing values.")
+    if (values < 0).to_numpy().any():
+        raise ValueError("Contingency columns must contain values greater than or equal to zero.")
+    if (values.sum(axis=1) == 0).any():
+        raise ValueError("A+B+C+D must be greater than zero for every row.")
 
 
 def get_contingency_arrays(
     df: pd.DataFrame,
-    a_col: ColumnName,
-    b_col: ColumnName,
-    c_col: ColumnName,
-    d_col: ColumnName,
+    a_col: Hashable,
+    b_col: Hashable,
+    c_col: Hashable,
+    d_col: Hashable,
 ) -> tuple[pd.Series, pd.Series, pd.Series, pd.Series]:
-    """Return A, B, C, and D columns as float Series after validation."""
+    """Return validated A, B, C and D columns as float Series."""
     validate_contingency_columns(df, a_col, b_col, c_col, d_col)
-    return (
-        df[a_col].astype(float),
-        df[b_col].astype(float),
-        df[c_col].astype(float),
-        df[d_col].astype(float),
-    )
+    return tuple(df[column].astype(float) for column in (a_col, b_col, c_col, d_col))  # type: ignore[return-value]
