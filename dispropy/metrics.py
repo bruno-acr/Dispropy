@@ -53,10 +53,22 @@ def calculate_ror(
     b_col: Hashable,
     c_col: Hashable,
     d_col: Hashable,
-    correction: float = 0.5,
+    correction: float = 0,
     inplace: bool = False,
 ) -> pd.DataFrame:
-    """Calculate ROR and its log-scale 95% confidence interval."""
+    """Calculate ROR and its log-scale 95% confidence interval.
+
+    ``correction`` is a continuity correction added to all four contingency
+    cells (A, B, C and D) before computing ROR, its log-scale standard error
+    and its 95% confidence interval. It avoids division by zero and
+    undefined logarithms when a cell is 0. It defaults to ``0``, so calling
+    this function without ``correction`` uses the raw counts unchanged. Pass
+    ``correction=0.5``, the conventional continuity correction, to add it
+    explicitly. Only nonnegative values are accepted; negative values raise
+    ``ValueError``. With ``correction=0`` (the default) and any cell equal
+    to 0, ROR, its logarithm, and the confidence interval can become
+    infinite or NaN.
+    """
     correction = _validate_positive_parameter(correction, "correction", allow_zero=True)
     a, b, c, d = get_contingency_arrays(df, a_col, b_col, c_col, d_col)
     ac, bc, cc, dc = (value + correction for value in (a, b, c, d))
@@ -79,10 +91,22 @@ def calculate_prr(
     b_col: Hashable,
     c_col: Hashable,
     d_col: Hashable,
-    correction: float = 0.5,
+    correction: float = 0,
     inplace: bool = False,
 ) -> pd.DataFrame:
-    """Calculate PRR and its approximate log-scale 95% confidence interval."""
+    """Calculate PRR and its approximate log-scale 95% confidence interval.
+
+    ``correction`` is a continuity correction added to all four contingency
+    cells (A, B, C and D) before computing PRR, its log-scale standard error
+    and its 95% confidence interval. It avoids division by zero and
+    undefined logarithms when a cell is 0. It defaults to ``0``, so calling
+    this function without ``correction`` uses the raw counts unchanged. Pass
+    ``correction=0.5``, the conventional continuity correction, to add it
+    explicitly. Only nonnegative values are accepted; negative values raise
+    ``ValueError``. With ``correction=0`` (the default) and any cell equal
+    to 0, PRR, its logarithm, and the confidence interval can become
+    infinite or NaN.
+    """
     correction = _validate_positive_parameter(correction, "correction", allow_zero=True)
     a, b, c, d = get_contingency_arrays(df, a_col, b_col, c_col, d_col)
     ac, bc, cc, dc = (value + correction for value in (a, b, c, d))
@@ -312,7 +336,7 @@ def calculate_disproportionality(
     b_col: Hashable,
     c_col: Hashable,
     d_col: Hashable,
-    correction: float = 0.5,
+    correction: float = 0,
     shrinkage: float = 0.5,
     metrics: Iterable[str] = ("ror", "prr", "ic"),
     add_signal_flags: bool = False,

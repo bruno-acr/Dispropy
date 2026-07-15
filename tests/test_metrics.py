@@ -1,3 +1,5 @@
+import inspect
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -38,6 +40,79 @@ def test_prr_known_value():
     assert result.loc[0, "prr"] == pytest.approx(expected)
 
 
+@pytest.mark.parametrize("calculate", [calculate_ror, calculate_prr])
+def test_correction_default_value_is_0(calculate):
+    assert inspect.signature(calculate).parameters["correction"].default == 0
+
+
+@pytest.mark.parametrize("calculate", [calculate_ror, calculate_prr])
+def test_omitting_correction_matches_explicit_0(calculate):
+    omitted = calculate(table(), "A", "B", "C", "D")
+    explicit = calculate(table(), "A", "B", "C", "D", correction=0)
+    pd.testing.assert_frame_equal(omitted, explicit)
+
+
+def test_ror_correction_applied_to_all_four_cells():
+    correction = 2.0
+    result = calculate_ror(table(), "A", "B", "C", "D", correction=correction)
+    a, b, c, d = 10 + correction, 90 + correction, 20 + correction, 880 + correction
+    expected_ror = (a * d) / (b * c)
+    expected_se = np.sqrt(1 / a + 1 / b + 1 / c + 1 / d)
+    assert result.loc[0, "ror"] == pytest.approx(expected_ror)
+    assert result.loc[0, "se_log_ror"] == pytest.approx(expected_se)
+    assert result.loc[0, "ror_lower_95"] == pytest.approx(
+        np.exp(np.log(expected_ror) - 1.96 * expected_se)
+    )
+    assert result.loc[0, "ror_upper_95"] == pytest.approx(
+        np.exp(np.log(expected_ror) + 1.96 * expected_se)
+    )
+
+
+def test_prr_correction_applied_to_all_four_cells():
+    correction = 2.0
+    result = calculate_prr(table(), "A", "B", "C", "D", correction=correction)
+    a, b, c, d = 10 + correction, 90 + correction, 20 + correction, 880 + correction
+    expected_prr = (a / (a + b)) / (c / (c + d))
+    expected_se = np.sqrt(1 / a - 1 / (a + b) + 1 / c - 1 / (c + d))
+    assert result.loc[0, "prr"] == pytest.approx(expected_prr)
+    assert result.loc[0, "se_log_prr"] == pytest.approx(expected_se)
+    assert result.loc[0, "prr_lower_95"] == pytest.approx(
+        np.exp(np.log(expected_prr) - 1.96 * expected_se)
+    )
+    assert result.loc[0, "prr_upper_95"] == pytest.approx(
+        np.exp(np.log(expected_prr) + 1.96 * expected_se)
+    )
+
+
+@pytest.mark.parametrize("calculate", [calculate_ror, calculate_prr])
+def test_correction_zero_with_zero_cell_yields_non_finite_result(calculate):
+    df = pd.DataFrame({"A": [0], "B": [10], "C": [20], "D": [880]})
+    result = calculate(df, "A", "B", "C", "D", correction=0)
+    metric = "ror" if calculate is calculate_ror else "prr"
+    assert result.loc[0, metric] == 0.0
+    assert not np.isfinite(result.loc[0, f"se_log_{metric}"]) or not np.isfinite(
+        result.loc[0, f"log_{metric}"]
+    )
+
+
+@pytest.mark.parametrize("calculate", [calculate_ror, calculate_prr])
+def test_correction_negative_is_rejected(calculate):
+    with pytest.raises(ValueError, match="correction"):
+        calculate(table(), "A", "B", "C", "D", correction=-0.5)
+
+
+@pytest.mark.parametrize("calculate", [calculate_ror, calculate_prr])
+def test_default_correction_uses_raw_counts(calculate):
+    result = calculate(table(), "A", "B", "C", "D")
+    metric = "ror" if calculate is calculate_ror else "prr"
+    a, b, c, d = 10.0, 90.0, 20.0, 880.0
+    if calculate is calculate_ror:
+        expected = (a * d) / (b * c)
+    else:
+        expected = (a / (a + b)) / (c / (c + d))
+    assert result.loc[0, metric] == pytest.approx(expected)
+
+
 def test_ic_known_value():
     result = calculate_ic(table(), "A", "B", "C", "D")
     expected_count = (100 * 30) / 1000
@@ -48,9 +123,16 @@ def test_ic_known_value():
     assert result.loc[0, "ic025"] == pytest.approx(expected_ic025)
 
 
-def test_zero_counts_with_defaults_are_finite():
+def test_zero_counts_with_default_correction_are_not_finite_for_ror_prr():
     df = pd.DataFrame({"A": [0], "B": [0], "C": [0], "D": [1]})
     result = calculate_disproportionality(df, "A", "B", "C", "D")
+    assert not np.isfinite(result[["ror", "prr"]]).all().all()
+    assert np.isfinite(result[["ic", "ic025", "ic975"]]).all().all()
+
+
+def test_zero_counts_with_explicit_correction_are_finite():
+    df = pd.DataFrame({"A": [0], "B": [0], "C": [0], "D": [1]})
+    result = calculate_disproportionality(df, "A", "B", "C", "D", correction=0.5)
     assert np.isfinite(result[["ror", "prr", "ic", "ic025", "ic975"]]).all().all()
 
 

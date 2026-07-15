@@ -17,10 +17,7 @@ ROR = (A * D) / (B * C)
 ```
 
 The log-scale 95% confidence interval uses the standard delta-method
-variance `1/A + 1/B + 1/C + 1/D` [[1]](#references). A continuity
-correction (`correction`, default `0.5`) is added to A, B, C and D before
-the ratio to avoid division by zero and undefined logarithms when any cell
-is 0.
+variance `1/A + 1/B + 1/C + 1/D` [[1]](#references).
 
 ### PRR (Proportional Reporting Ratio)
 
@@ -29,8 +26,50 @@ PRR = [A / (A + B)] / [C / (C + D)]
 ```
 
 The log-scale 95% confidence interval uses the delta-method variance
-`1/A - 1/(A+B) + 1/C - 1/(C+D)` [[2]](#references). The same continuity
-correction as ROR applies to A, B, C and D.
+`1/A - 1/(A+B) + 1/C - 1/(C+D)` [[2]](#references).
+
+### Continuity correction (ROR and PRR)
+
+`calculate_ror` and `calculate_prr` both take a `correction` argument. A
+continuity correction is a small constant added to sparse contingency
+tables to avoid division by zero and undefined logarithms, so that ROR,
+PRR and their confidence intervals can still be computed when a cell is 0.
+
+- The library's default behavior is `correction=0`, i.e. no correction: the
+  raw A, B, C and D counts are used as-is.
+- If you omit `correction`, `0` is used automatically — calling
+  `calculate_ror(data)` is equivalent to `calculate_ror(data,
+  correction=0)`, and likewise for `calculate_prr`.
+- You can apply the conventional continuity correction by passing
+  `correction=0.5` explicitly.
+- Whatever value you choose is added to all four contingency cells (A, B,
+  C and D) before ROR/PRR and their respective confidence intervals are
+  computed, so both the point estimate and the interval use the same
+  corrected counts.
+- `correction` only accepts nonnegative numbers; a negative value raises a
+  `ValueError` with a clear message.
+
+**Warning:** with the default `correction=0`, a table that has any cell
+equal to 0 will produce an undefined ROR, PRR, their logarithms, or their
+confidence intervals (infinite or `NaN`). Pass `correction=0.5` (or another
+positive value) if your data may contain empty cells and you want finite
+results.
+
+#### Examples
+
+```python
+# Default behavior (no correction applied)
+calculate_ror(data, "A", "B", "C", "D")
+calculate_prr(data, "A", "B", "C", "D")
+
+# Equivalent, explicit form
+calculate_ror(data, "A", "B", "C", "D", correction=0)
+calculate_prr(data, "A", "B", "C", "D", correction=0)
+
+# With the conventional continuity correction
+calculate_ror(data, "A", "B", "C", "D", correction=0.5)
+calculate_prr(data, "A", "B", "C", "D", correction=0.5)
+```
 
 ### IC (Information Component)
 
@@ -91,10 +130,15 @@ drug-event pairs) and the real FDA CAERS dataset (17,189 dietary-supplement
 product-event pairs) that `openEBGM` ships with.
 
 - **ROR and PRR** were compared against `PhViD::ROR()` and `PhViD::PRR()` on
-  both datasets. Results matched to floating-point precision on the
-  simulated data (correlation 1.000000, maximum relative difference ~1e-14)
-  and on the real CAERS data (correlation 1.000000, maximum relative
-  difference ~5e-15).
+  both datasets, calling `calculate_ror`/`calculate_prr` with
+  `correction=0.5` to match `PhViD`'s continuity correction. Results matched
+  to floating-point precision on the simulated data (correlation 1.000000,
+  maximum relative difference ~1e-14) and on the real CAERS data
+  (correlation 1.000000, maximum relative difference ~5e-15). Note that
+  `calculate_ror`/`calculate_prr` default to `correction=0` (no correction)
+  — this validation applies to the `correction=0.5` case specifically, not
+  to the library's current default; see
+  [Continuity correction](#continuity-correction-ror-and-prr).
 - **IC** was compared against a reimplementation of the full Dirichlet-based
   BCPNN posterior of Bate et al. (1998) (as used by `PhViD::BCPNN`) on both
   datasets. The two correlate strongly but are not numerically identical,
@@ -209,8 +253,9 @@ This does not prove that `A`, `B`, `C` and `D` were constructed correctly.
 Users must check the counting unit, deduplication, drug and event
 definitions, comparator population and consistency of totals.
 
-ROR, PRR and IC can be statistically unstable when counts are small. The
-continuity correction and shrinkage avoid undefined operations and reduce
+ROR, PRR and IC can be statistically unstable when counts are small. IC's
+shrinkage is applied by default, and ROR/PRR's continuity correction can be
+enabled with `correction=0.5`; both avoid undefined operations and reduce
 part of that instability, but they do not create information or replace an
 assessment of precision and clinical relevance. IC additionally trades some
 accuracy for speed relative to the full BCPNN posterior (see
