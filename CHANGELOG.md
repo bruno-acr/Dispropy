@@ -3,16 +3,22 @@
 ## 0.5.0
 
 - **Breaking:** `calculate_ror`, `calculate_prr` and
-  `calculate_disproportionality` now default to `correction=0` (no
+  `calculate_disproportionality` now default to `correction=0.0` (no
   continuity correction) instead of `correction=0.5`. Code that relied on
   the implicit `0.5` correction must now pass `correction=0.5` explicitly
   to get the same numbers as before. With the new default, ROR/PRR (and
   their confidence intervals) will be `NaN`/infinite for any row where a
   contingency cell is 0, unless `correction` is set to a positive value.
-- Added the `correction` parameter's validation (nonnegative only, clear
-  `ValueError` on negative values) and expanded the `calculate_ror`/
-  `calculate_prr` docstrings and the README to explain the continuity
-  correction, its default, and the implications of disabling it.
+  `calculate_disproportionality` forwards `correction` to both metrics
+  unchanged, so this applies there too.
+- `correction` now consistently rejects negative, non-numeric, `NaN` and
+  infinite values with a clear `ValueError`, for all three functions. The
+  original A, B, C and D columns are never mutated by the correction.
+- Expanded the `calculate_ror`/`calculate_prr`/`calculate_disproportionality`
+  docstrings and the README to explain the continuity correction, its
+  default, that the same corrected counts drive the point estimate,
+  standard error and confidence interval, and the implications of leaving
+  it disabled on sparse tables.
 - Clarified in the README that the ROR/PRR validation against
   `PhViD::ROR()`/`PhViD::PRR()` was performed with `correction=0.5`
   explicitly, since that is no longer the library's default.

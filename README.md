@@ -30,45 +30,52 @@ The log-scale 95% confidence interval uses the delta-method variance
 
 ### Continuity correction (ROR and PRR)
 
-`calculate_ror` and `calculate_prr` both take a `correction` argument. A
-continuity correction is a small constant added to sparse contingency
-tables to avoid division by zero and undefined logarithms, so that ROR,
-PRR and their confidence intervals can still be computed when a cell is 0.
+`calculate_ror`, `calculate_prr` and `calculate_disproportionality` all take
+a `correction` argument. A continuity correction is a small constant added
+to sparse contingency tables to avoid division by zero and undefined
+logarithms, so that ROR, PRR and their confidence intervals can still be
+computed when a cell is 0.
 
-- The library's default behavior is `correction=0`, i.e. no correction: the
-  raw A, B, C and D counts are used as-is.
-- If you omit `correction`, `0` is used automatically — calling
+- The library's default behavior is `correction=0.0`: by default, ROR and
+  PRR are calculated on the contingency table's original counts, with no
+  continuity correction applied.
+- If you omit `correction`, `0.0` is used automatically — calling
   `calculate_ror(data)` is equivalent to `calculate_ror(data,
-  correction=0)`, and likewise for `calculate_prr`.
-- You can apply the conventional continuity correction by passing
-  `correction=0.5` explicitly.
+  correction=0.0)`, and likewise for `calculate_prr` and
+  `calculate_disproportionality`.
+- You can apply a continuity correction by passing `correction=0.5`
+  explicitly (the conventional value) or any other nonnegative number.
 - Whatever value you choose is added to all four contingency cells (A, B,
-  C and D) before ROR/PRR and their respective confidence intervals are
-  computed, so both the point estimate and the interval use the same
-  corrected counts.
-- `correction` only accepts nonnegative numbers; a negative value raises a
-  `ValueError` with a clear message.
+  C and D) before ROR/PRR are computed, and the same corrected counts are
+  used consistently for the point estimate, its standard error, and its
+  confidence interval.
+- `correction` only accepts finite, nonnegative numbers; negative,
+  non-numeric, `NaN` or infinite values raise a `ValueError` with a clear
+  message.
+- The original A, B, C and D columns in your DataFrame are never modified
+  — the correction is applied to derived values used only for the
+  calculation.
 
-**Warning:** with the default `correction=0`, a table that has any cell
-equal to 0 will produce an undefined ROR, PRR, their logarithms, or their
-confidence intervals (infinite or `NaN`). Pass `correction=0.5` (or another
-positive value) if your data may contain empty cells and you want finite
-results.
+**Warning:** with the default `correction=0.0`, a table that has any cell
+equal to 0 can produce division by zero, an undefined logarithm, an
+infinite ROR/PRR, or a confidence interval that cannot be computed
+(`NaN`). Pass `correction=0.5` (or another positive value) if your data
+may contain empty cells and you want finite results.
 
 #### Examples
 
 ```python
-# Default behavior (no correction applied)
-calculate_ror(data, "A", "B", "C", "D")
-calculate_prr(data, "A", "B", "C", "D")
+# Default behavior: no continuity correction
+ror = calculate_ror(data, "A", "B", "C", "D")
+prr = calculate_prr(data, "A", "B", "C", "D")
 
 # Equivalent, explicit form
-calculate_ror(data, "A", "B", "C", "D", correction=0)
-calculate_prr(data, "A", "B", "C", "D", correction=0)
+ror = calculate_ror(data, "A", "B", "C", "D", correction=0.0)
+prr = calculate_prr(data, "A", "B", "C", "D", correction=0.0)
 
-# With the conventional continuity correction
-calculate_ror(data, "A", "B", "C", "D", correction=0.5)
-calculate_prr(data, "A", "B", "C", "D", correction=0.5)
+# Apply a continuity correction of 0.5
+ror_corrected = calculate_ror(data, "A", "B", "C", "D", correction=0.5)
+prr_corrected = calculate_prr(data, "A", "B", "C", "D", correction=0.5)
 ```
 
 ### IC (Information Component)
@@ -135,9 +142,9 @@ product-event pairs) that `openEBGM` ships with.
   to floating-point precision on the simulated data (correlation 1.000000,
   maximum relative difference ~1e-14) and on the real CAERS data
   (correlation 1.000000, maximum relative difference ~5e-15). Note that
-  `calculate_ror`/`calculate_prr` default to `correction=0` (no correction)
-  — this validation applies to the `correction=0.5` case specifically, not
-  to the library's current default; see
+  `calculate_ror`/`calculate_prr` default to `correction=0.0` (no
+  correction) — this validation applies to the `correction=0.5` case
+  specifically, not to the library's current default; see
   [Continuity correction](#continuity-correction-ror-and-prr).
 - **IC** was compared against a reimplementation of the full Dirichlet-based
   BCPNN posterior of Bate et al. (1998) (as used by `PhViD::BCPNN`) on both
@@ -206,7 +213,11 @@ print(result)
 print(result.attrs["gps_model"])
 ```
 
-ROR, PRR and IC are calculated by default. EBGM must be requested explicitly
+ROR, PRR and IC are calculated by default. `calculate_disproportionality`
+forwards `correction` to the ROR and PRR calculations, defaulting to
+`correction=0.0` (no continuity correction) just like calling
+`calculate_ror`/`calculate_prr` directly; pass `correction=0.5` (as in the
+example above) to apply it to both. EBGM must be requested explicitly
 because it involves a global numerical fit and requires at least two pairs
 with a positive expected count. The fitted GPS parameters are stored in
 `result.attrs["gps_model"]`.

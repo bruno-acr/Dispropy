@@ -30,25 +30,27 @@ def ebgm_table():
 
 
 def test_ror_known_value():
-    result = calculate_ror(table(), "A", "B", "C", "D", correction=0)
+    result = calculate_ror(table(), "A", "B", "C", "D", correction=0.0)
     assert result.loc[0, "ror"] == pytest.approx((10 * 880) / (90 * 20))
 
 
 def test_prr_known_value():
-    result = calculate_prr(table(), "A", "B", "C", "D", correction=0)
+    result = calculate_prr(table(), "A", "B", "C", "D", correction=0.0)
     expected = (10 / 100) / (20 / 900)
     assert result.loc[0, "prr"] == pytest.approx(expected)
 
 
-@pytest.mark.parametrize("calculate", [calculate_ror, calculate_prr])
-def test_correction_default_value_is_0(calculate):
-    assert inspect.signature(calculate).parameters["correction"].default == 0
+@pytest.mark.parametrize("calculate", [calculate_ror, calculate_prr, calculate_disproportionality])
+def test_correction_default_value_is_0_0(calculate):
+    default = inspect.signature(calculate).parameters["correction"].default
+    assert default == 0.0
+    assert isinstance(default, float)
 
 
 @pytest.mark.parametrize("calculate", [calculate_ror, calculate_prr])
-def test_omitting_correction_matches_explicit_0(calculate):
+def test_omitting_correction_matches_explicit_0_0(calculate):
     omitted = calculate(table(), "A", "B", "C", "D")
-    explicit = calculate(table(), "A", "B", "C", "D", correction=0)
+    explicit = calculate(table(), "A", "B", "C", "D", correction=0.0)
     pd.testing.assert_frame_equal(omitted, explicit)
 
 
@@ -84,6 +86,57 @@ def test_prr_correction_applied_to_all_four_cells():
     )
 
 
+def test_ror_correction_0_5_matches_library_former_default_behavior():
+    result = calculate_ror(table(), "A", "B", "C", "D", correction=0.5)
+    a, b, c, d = 10.5, 90.5, 20.5, 880.5
+    expected_ror = (a * d) / (b * c)
+    expected_se = np.sqrt(1 / a + 1 / b + 1 / c + 1 / d)
+    assert result.loc[0, "ror"] == pytest.approx(expected_ror)
+    assert result.loc[0, "se_log_ror"] == pytest.approx(expected_se)
+    assert result.loc[0, "ror_lower_95"] == pytest.approx(
+        np.exp(np.log(expected_ror) - 1.96 * expected_se)
+    )
+    assert result.loc[0, "ror_upper_95"] == pytest.approx(
+        np.exp(np.log(expected_ror) + 1.96 * expected_se)
+    )
+
+
+def test_prr_correction_0_5_matches_library_former_default_behavior():
+    result = calculate_prr(table(), "A", "B", "C", "D", correction=0.5)
+    a, b, c, d = 10.5, 90.5, 20.5, 880.5
+    expected_prr = (a / (a + b)) / (c / (c + d))
+    expected_se = np.sqrt(1 / a - 1 / (a + b) + 1 / c - 1 / (c + d))
+    assert result.loc[0, "prr"] == pytest.approx(expected_prr)
+    assert result.loc[0, "se_log_prr"] == pytest.approx(expected_se)
+    assert result.loc[0, "prr_lower_95"] == pytest.approx(
+        np.exp(np.log(expected_prr) - 1.96 * expected_se)
+    )
+    assert result.loc[0, "prr_upper_95"] == pytest.approx(
+        np.exp(np.log(expected_prr) + 1.96 * expected_se)
+    )
+
+
+@pytest.mark.parametrize("correction", [0.0, 0.5, 3.0])
+def test_correction_is_propagated_by_calculate_disproportionality(correction):
+    df = table()
+    combined = calculate_disproportionality(
+        df, "A", "B", "C", "D", correction=correction, metrics=("ror", "prr")
+    )
+    direct_ror = calculate_ror(df, "A", "B", "C", "D", correction=correction)
+    direct_prr = calculate_prr(df, "A", "B", "C", "D", correction=correction)
+    assert combined.loc[0, "ror"] == pytest.approx(direct_ror.loc[0, "ror"])
+    assert combined.loc[0, "prr"] == pytest.approx(direct_prr.loc[0, "prr"])
+
+
+@pytest.mark.parametrize("calculate", [calculate_ror, calculate_prr])
+@pytest.mark.parametrize(
+    "invalid_correction", [float("nan"), float("inf"), float("-inf"), "0.5", None, [0.5]]
+)
+def test_correction_invalid_values_are_rejected(calculate, invalid_correction):
+    with pytest.raises(ValueError, match="correction"):
+        calculate(table(), "A", "B", "C", "D", correction=invalid_correction)
+
+
 @pytest.mark.parametrize("calculate", [calculate_ror, calculate_prr])
 def test_correction_zero_with_zero_cell_yields_non_finite_result(calculate):
     df = pd.DataFrame({"A": [0], "B": [10], "C": [20], "D": [880]})
@@ -99,6 +152,14 @@ def test_correction_zero_with_zero_cell_yields_non_finite_result(calculate):
 def test_correction_negative_is_rejected(calculate):
     with pytest.raises(ValueError, match="correction"):
         calculate(table(), "A", "B", "C", "D", correction=-0.5)
+
+
+@pytest.mark.parametrize("calculate", [calculate_ror, calculate_prr])
+def test_correction_does_not_mutate_original_columns(calculate):
+    original = table()
+    before = original[["A", "B", "C", "D"]].copy()
+    calculate(original, "A", "B", "C", "D", correction=0.5)
+    pd.testing.assert_frame_equal(original[["A", "B", "C", "D"]], before)
 
 
 @pytest.mark.parametrize("calculate", [calculate_ror, calculate_prr])

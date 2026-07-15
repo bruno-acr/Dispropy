@@ -53,21 +53,23 @@ def calculate_ror(
     b_col: Hashable,
     c_col: Hashable,
     d_col: Hashable,
-    correction: float = 0,
+    correction: float = 0.0,
     inplace: bool = False,
 ) -> pd.DataFrame:
     """Calculate ROR and its log-scale 95% confidence interval.
 
     ``correction`` is a continuity correction added to all four contingency
-    cells (A, B, C and D) before computing ROR, its log-scale standard error
-    and its 95% confidence interval. It avoids division by zero and
-    undefined logarithms when a cell is 0. It defaults to ``0``, so calling
-    this function without ``correction`` uses the raw counts unchanged. Pass
-    ``correction=0.5``, the conventional continuity correction, to add it
-    explicitly. Only nonnegative values are accepted; negative values raise
-    ``ValueError``. With ``correction=0`` (the default) and any cell equal
-    to 0, ROR, its logarithm, and the confidence interval can become
-    infinite or NaN.
+    cells (A, B, C and D) before computing ROR. The same corrected counts
+    are used consistently for the point estimate, its log-scale standard
+    error, and its 95% confidence interval. It defaults to ``0.0``, so
+    calling this function without ``correction`` performs the calculation
+    on the table's original counts, with no continuity correction applied.
+    Pass ``correction=0.5``, the conventional continuity correction, to add
+    it explicitly. Only finite, nonnegative numbers are accepted; negative,
+    non-numeric, ``NaN`` or infinite values raise ``ValueError``. With
+    ``correction=0.0`` (the default) and any cell equal to 0, ROR, its
+    logarithm, and the confidence interval can become infinite or
+    undefined (``NaN``).
     """
     correction = _validate_positive_parameter(correction, "correction", allow_zero=True)
     a, b, c, d = get_contingency_arrays(df, a_col, b_col, c_col, d_col)
@@ -91,21 +93,23 @@ def calculate_prr(
     b_col: Hashable,
     c_col: Hashable,
     d_col: Hashable,
-    correction: float = 0,
+    correction: float = 0.0,
     inplace: bool = False,
 ) -> pd.DataFrame:
     """Calculate PRR and its approximate log-scale 95% confidence interval.
 
     ``correction`` is a continuity correction added to all four contingency
-    cells (A, B, C and D) before computing PRR, its log-scale standard error
-    and its 95% confidence interval. It avoids division by zero and
-    undefined logarithms when a cell is 0. It defaults to ``0``, so calling
-    this function without ``correction`` uses the raw counts unchanged. Pass
-    ``correction=0.5``, the conventional continuity correction, to add it
-    explicitly. Only nonnegative values are accepted; negative values raise
-    ``ValueError``. With ``correction=0`` (the default) and any cell equal
-    to 0, PRR, its logarithm, and the confidence interval can become
-    infinite or NaN.
+    cells (A, B, C and D) before computing PRR. The same corrected counts
+    are used consistently for the point estimate, its log-scale standard
+    error, and its 95% confidence interval. It defaults to ``0.0``, so
+    calling this function without ``correction`` performs the calculation
+    on the table's original counts, with no continuity correction applied.
+    Pass ``correction=0.5``, the conventional continuity correction, to add
+    it explicitly. Only finite, nonnegative numbers are accepted; negative,
+    non-numeric, ``NaN`` or infinite values raise ``ValueError``. With
+    ``correction=0.0`` (the default) and any cell equal to 0, PRR, its
+    logarithm, and the confidence interval can become infinite or
+    undefined (``NaN``).
     """
     correction = _validate_positive_parameter(correction, "correction", allow_zero=True)
     a, b, c, d = get_contingency_arrays(df, a_col, b_col, c_col, d_col)
@@ -336,7 +340,7 @@ def calculate_disproportionality(
     b_col: Hashable,
     c_col: Hashable,
     d_col: Hashable,
-    correction: float = 0,
+    correction: float = 0.0,
     shrinkage: float = 0.5,
     metrics: Iterable[str] = ("ror", "prr", "ic"),
     add_signal_flags: bool = False,
@@ -346,6 +350,11 @@ def calculate_disproportionality(
 
     Supported metrics are ``ror``, ``prr``, ``ic`` and ``ebgm``. EBGM is not
     enabled by default because it fits a model jointly and is more expensive.
+
+    ``correction`` is forwarded as-is to ``calculate_ror`` and
+    ``calculate_prr`` when those metrics are selected; see their docstrings
+    for details. It defaults to ``0.0`` (no continuity correction); pass
+    ``correction=0.5`` to apply the conventional correction to both.
     """
     get_contingency_arrays(df, a_col, b_col, c_col, d_col)
     if isinstance(metrics, str):
