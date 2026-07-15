@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.0
+
+- Fixed a bias in `calculate_ebgm`'s GPS hyperparameter fit: the likelihood
+  now truncates at `n_star`, the smallest observed count in the fitting
+  sample, following DuMouchel and Pregibon (2001). Real disproportionality
+  tables normally list only pairs that were actually reported, so counts
+  below that minimum (typically zero) are already excluded before reaching
+  `calculate_ebgm`; fitting the untruncated mixture to such a sample biased
+  all five hyperparameters and, through them, every EBGM/EB05/EB95/Qn value.
+  Tables that already include zero-count rows are unaffected (`n_star` is 0
+  and the correction is a no-op).
+- Added `n_star` to `result.attrs["gps_model"]` for transparency.
+- Cross-validated ROR, PRR, IC and EBGM against the R reference
+  implementations `PhViD` and `openEBGM` on both a large simulated dataset
+  and the real FDA CAERS dataset; see the README's Validation section.
+- Clarified in the README that IC is the shrinkage approximation of Norén
+  et al. (2013), not the full Dirichlet-based BCPNN posterior of Bate et
+  al. (1998); the two correlate strongly but are not numerically identical,
+  particularly for pairs with very few reports.
+- Translated the README to English and added a References section citing
+  the source of every implemented formula.
+
 ## 0.3.0
 
 - Added `GPSFitWarning` for GPS fits based on fewer than 50 valid pairs.

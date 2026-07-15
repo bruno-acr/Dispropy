@@ -4,17 +4,47 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dispropy"
-version = "0.3.0"
+version = "0.4.0"
 description = "Python library for disproportionality analysis in pharmacovigilance"
 readme = "README.md"
 requires-python = ">=3.9"
 authors = [{ name = "Bruno Ramalho" }]
 license = "MIT"
+keywords = [
+    "pharmacovigilance",
+    "disproportionality",
+    "signal detection",
+    "ror",
+    "prr",
+    "information component",
+    "ebgm",
+    "gps",
+    "drug safety",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Healthcare Industry",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
 dependencies = [
     "pandas>=1.5",
     "numpy>=1.23",
     "scipy>=1.9",
 ]
+
+[project.urls]
+Homepage = "https://github.com/bruno-acr/Dispropy"
+Repository = "https://github.com/bruno-acr/Dispropy"
+Issues = "https://github.com/bruno-acr/Dispropy/issues"
+Changelog = "https://github.com/bruno-acr/Dispropy/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]

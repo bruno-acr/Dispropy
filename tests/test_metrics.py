@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+from scipy import special, stats
 
 from dispropy import (
     calculate_disproportionality,
@@ -99,3 +100,35 @@ def test_ebgm_in_main_api_and_signal_flag():
 def test_ebgm_requires_multiple_valid_rows():
     with pytest.raises(ValueError, match="at least two rows"):
         calculate_ebgm(table(), "A", "B", "C", "D")
+
+
+def test_ebgm_n_star_matches_min_observed_count_in_fitting_sample():
+    with_zero = ebgm_table()
+    result_with_zero = calculate_ebgm(with_zero, "A", "B", "C", "D")
+    assert result_with_zero.attrs["gps_model"]["n_star"] == 0
+
+    without_zero = with_zero.copy()
+    without_zero["A"] = without_zero["A"] + 1
+    result_without_zero = calculate_ebgm(without_zero, "A", "B", "C", "D")
+    assert result_without_zero.attrs["gps_model"]["n_star"] == 1
+
+
+def test_ebgm_log_likelihood_matches_manual_zero_truncated_formula():
+    df = ebgm_table().copy()
+    df["A"] = df["A"] + 1  # no zero counts, so n_star must be 1
+    result = calculate_ebgm(df, "A", "B", "C", "D")
+    model = result.attrs["gps_model"]
+    assert model["n_star"] == 1
+
+    observed = result["observed_count"].to_numpy()
+    expected = result["expected_count"].to_numpy()
+    alpha1, beta1 = model["alpha1"], model["beta1"]
+    alpha2, beta2, weight = model["alpha2"], model["beta2"], model["weight"]
+    p1 = beta1 / (beta1 + expected)
+    p2 = beta2 / (beta2 + expected)
+    log_f1 = stats.nbinom.logpmf(observed, alpha1, p1) - stats.nbinom.logsf(0, alpha1, p1)
+    log_f2 = stats.nbinom.logpmf(observed, alpha2, p2) - stats.nbinom.logsf(0, alpha2, p2)
+    components = np.vstack((np.log(weight) + log_f1, np.log1p(-weight) + log_f2))
+    manual_log_likelihood = np.sum(special.logsumexp(components, axis=0))
+
+    assert manual_log_likelihood == pytest.approx(model["log_likelihood"], rel=1e-6)

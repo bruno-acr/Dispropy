@@ -1,43 +1,131 @@
 # dispropy
 
-`dispropy` calcula métricas de desproporcionalidade em farmacovigilância a
-partir de tabelas 2x2 armazenadas em um `pandas.DataFrame`.
+`dispropy` calculates disproportionality metrics for pharmacovigilance from
+2x2 contingency tables stored in a `pandas.DataFrame`.
 
-|                         | Evento de interesse | Outros eventos |
-|-------------------------|---------------------|----------------|
-| Medicamento de interesse | A                  | B              |
-| Outros medicamentos      | C                  | D              |
+|                     | Event of interest | Other events |
+|---------------------|--------------------|---------------|
+| Drug of interest     | A                  | B             |
+| Other drugs          | C                  | D             |
 
-## Métricas
+## Metrics
 
-- **ROR:** `(A * D) / (B * C)`, com intervalo de confiança de 95%.
-- **PRR:** `[A / (A + B)] / [C / (C + D)]`, com intervalo de confiança de 95%.
-- **IC:** `log2((Obs + 0.5) / (Esp + 0.5))`, onde `Obs = A` e
-  `Esp = ((A+B) * (A+C)) / (A+B+C+D)`. Inclui IC025 e IC975.
-- **EBGM:** média geométrica bayesiana empírica do método GPS de DuMouchel.
-  Uma mistura de duas distribuições Gama é ajustada conjuntamente a todos os
-  pares. A saída inclui o peso posterior `qn`, `ebgm`, `eb05` e `eb95`.
+### ROR (Reporting Odds Ratio)
 
-O IC025 é calculado por
-`IC - 3.3 * (Obs + 0.5)^(-0.5) - 2 * (Obs + 0.5)^(-1.5)`.
+```
+ROR = (A * D) / (B * C)
+```
 
-## Instalação
+The log-scale 95% confidence interval uses the standard delta-method
+variance `1/A + 1/B + 1/C + 1/D` [[1]](#references). A continuity
+correction (`correction`, default `0.5`) is added to A, B, C and D before
+the ratio to avoid division by zero and undefined logarithms when any cell
+is 0.
+
+### PRR (Proportional Reporting Ratio)
+
+```
+PRR = [A / (A + B)] / [C / (C + D)]
+```
+
+The log-scale 95% confidence interval uses the delta-method variance
+`1/A - 1/(A+B) + 1/C - 1/(C+D)` [[2]](#references). The same continuity
+correction as ROR applies to A, B, C and D.
+
+### IC (Information Component)
+
+```
+IC = log2((Obs + shrinkage) / (Exp + shrinkage))
+Obs = A
+Exp = ((A + B) * (A + C)) / (A + B + C + D)
+```
+
+with `shrinkage` defaulting to `0.5`. `IC025` and `IC975` (the 95%
+credibility interval) use the simplified normal approximation of Norén,
+Hopstadius and Bate (2013) [[5]](#references):
+
+```
+IC025 = IC - 3.3 * (Obs + 0.5)^(-0.5) - 2.0 * (Obs + 0.5)^(-1.5)
+IC975 = IC + 2.4 * (Obs + 0.5)^(-0.5) - 0.5 * (Obs + 0.5)^(-1.5)
+```
+
+The IC concept itself was introduced as part of the Bayesian Confidence
+Propagation Neural Network (BCPNN) by Bate et al. (1998) [[3]](#references),
+which places a Dirichlet(1,1,1,1) prior on the four joint cell probabilities
+and derives IC as a posterior expectation over the *full* 2x2 table. What
+`dispropy` implements is the later, computationally simpler shrinkage
+observed-to-expected approximation of [[5]](#references), which only needs
+`Obs` and `Exp` (not the full Dirichlet posterior). The two correlate
+strongly but are **not numerically identical** — see
+[Validation](#validation-against-reference-implementations).
+
+### EBGM (Empirical Bayes Geometric Mean)
+
+DuMouchel's Gamma-Poisson Shrinker (GPS) method [[4]](#references). A
+mixture of two Gamma distributions is fitted jointly to all rows by maximum
+likelihood, giving five hyperparameters (`alpha1`, `beta1`, `alpha2`,
+`beta2`, `weight`). For each pair, the output includes the posterior
+mixture weight `qn`, `ebgm` (the posterior geometric mean of the relative
+reporting rate), and `eb05`/`eb95` (the 5th and 95th percentiles of its
+posterior distribution).
+
+The hyperparameter likelihood is truncated at `n_star`, the smallest
+observed count in the fitting sample, following DuMouchel and Pregibon
+(2001) [[8]](#references). This matters in practice: a real
+disproportionality table almost never lists the pairs with zero reports
+(enumerating the full drug x event grid is normally infeasible), so the
+fitting sample implicitly excludes counts below `n_star` before it ever
+reaches `dispropy`. Fitting the untruncated GPS likelihood to such a sample
+biases all five hyperparameters — this was caught during validation (see
+below) and fixed in 0.4.0. If your table does include zero-count rows,
+`n_star` is 0 and the correction has no effect. `n_star` is recorded in
+`result.attrs["gps_model"]` for transparency.
+
+## Validation against reference implementations
+
+Formulas were checked against independent R reference implementations, not
+just against `dispropy`'s own test suite, to confirm the numbers a
+researcher gets are not just internally consistent but actually correct.
+
+- **ROR and PRR** were compared against `PhViD::ROR()` and `PhViD::PRR()`
+  on `PhViD`'s built-in simulated dataset (102,483 drug-event pairs).
+  Results matched to floating-point precision (correlation 1.000000,
+  maximum relative difference ~1e-14).
+- **IC** was compared against a reimplementation of the full Dirichlet-based
+  BCPNN posterior of Bate et al. (1998) (as used by `PhViD::BCPNN`) on the
+  same dataset. The two correlate strongly (r ≈ 0.98) but are not
+  numerically identical, confirming the distinction described above:
+  divergence is largest for pairs with very few reports (mean |ΔIC| ≈ 0.47
+  for `A` between 1 and 2) and shrinks as counts grow (mean |ΔIC| ≈ 0.01 for
+  `A` above 100). The `ic025 > 0` signal call agrees with the full BCPNN's
+  equivalent for 99.3% of pairs.
+- **EBGM** was compared against the `openEBGM` package on the real FDA
+  CAERS dataset (17,189 dietary-supplement product-event pairs) that
+  `openEBGM` ships with. This comparison is what surfaced the `n_star`
+  truncation bug described above: before the fix, EBGM correlated at only
+  0.20 with the reference, and 23.5% of pairs were flagged as `EB05 > 2`
+  signals that should not have been. After adding the truncation, `qn`,
+  `ebgm`, `eb05` and `eb95` all correlate above 0.9999 with `openEBGM`, and
+  agreement on the `EBGM > 2` signal call is 99.9%. Remaining differences
+  are consistent with ordinary optimizer precision, not a systematic bias.
+
+## Installation
 
 ```bash
 pip install -e .
 ```
 
-Para desenvolvimento:
+For development:
 
 ```bash
 pip install -e ".[dev]"
 pytest
 ```
 
-## Uso
+## Usage
 
-Um tutorial executável cobrindo todas as métricas, validações, flags e
-diagnósticos GPS está disponível em
+A runnable tutorial covering every metric, validation rule, signal flag and
+GPS diagnostic is available at
 [`examples/dispropy_tutorial.ipynb`](examples/dispropy_tutorial.ipynb).
 
 ```python
@@ -53,7 +141,7 @@ df = pd.DataFrame({
     "D": [880, 875, 880, 870],
 })
 
-resultado = calculate_disproportionality(
+result = calculate_disproportionality(
     df,
     a_col="A",
     b_col="B",
@@ -65,67 +153,116 @@ resultado = calculate_disproportionality(
     add_signal_flags=True,
 )
 
-print(resultado)
-print(resultado.attrs["gps_model"])
+print(result)
+print(result.attrs["gps_model"])
 ```
 
-ROR, PRR e IC são calculados por padrão. O EBGM precisa ser solicitado porque
-envolve ajuste numérico global e exige pelo menos dois pares com contagem
-esperada positiva. Os parâmetros GPS ajustados ficam em
-`resultado.attrs["gps_model"]`.
+ROR, PRR and IC are calculated by default. EBGM must be requested explicitly
+because it involves a global numerical fit and requires at least two pairs
+with a positive expected count. The fitted GPS parameters are stored in
+`result.attrs["gps_model"]`.
 
-Também é possível chamar `calculate_ror`, `calculate_prr`, `calculate_ic` e
-`calculate_ebgm` individualmente. Os nomes das colunas A, B, C e D são livres.
+`calculate_ror`, `calculate_prr`, `calculate_ic` and `calculate_ebgm` can
+also be called individually. Column names for A, B, C and D are free-form.
 
-## Sinalização e interpretação
+## Signal flags and interpretation
 
-Com `add_signal_flags=True`, os critérios de triagem são:
+With `add_signal_flags=True`, the screening criteria are:
 
 - `signal_ror`: `ror_lower_95 > 1`;
 - `signal_prr`: `prr_lower_95 > 1`;
 - `signal_ic`: `ic025 > 0`;
-- `signal_ebgm`: `eb05 > 2` e pelo menos três observações (`A >= 3`).
+- `signal_ebgm`: `eb05 > 2` and at least three observed cases (`A >= 3`).
 
-ROR ou PRR acima de 1 e IC acima de 0 sugerem relato maior que o comparador ou
-que o esperado. Essas métricas e flags indicam apenas desproporcionalidade
-estatística. Elas não demonstram causalidade, e a avaliação clínica e
-farmacológica continua necessária.
+All four use a strict `>` rather than `>=`, because the flag marks whether
+the lower bound of the interval excludes the null value (ROR/PRR = 1, IC =
+0, EB05 = 2): a bound exactly at the null value does not reject it. This
+mirrors the "point estimate minus 1.96 SE" screening approach compared
+against the IC in [[2]](#references), rather than the original combined
+criterion from [[6]](#references) (`PRR >= 2`, `chi-squared >= 4`, `N >= 3`),
+which `dispropy` does not implement. If you need the latter, compute it from
+the columns and `prr` output yourself.
 
-## Limitações
+ROR or PRR above 1 and IC above 0 suggest reporting higher than the
+comparator or than expected. These metrics and flags indicate only
+statistical disproportionality. They do not demonstrate causality, and
+clinical and pharmacological assessment is still required.
 
-- Não corrige vieses inerentes à notificação espontânea.
-- Não estima incidência nem risco absoluto.
-- O ajuste GPS depende da quantidade e da composição dos pares analisados.
-- Não substitui avaliação clínica.
-- Não implementa estratificação por idade, sexo, país ou período.
+## Limitations
 
-## Quando os resultados podem não ser confiáveis
+- Does not correct for biases inherent to spontaneous reporting.
+- Does not estimate incidence or absolute risk.
+- The GPS fit depends on the number and composition of the analyzed pairs.
+- Does not replace clinical assessment.
+- Does not implement stratification by age, sex, country or period.
 
-A validação da biblioteca confirma que as colunas existem, são numéricas,
-não contêm valores ausentes ou negativos e não representam uma linha totalmente
-vazia. Isso não comprova que `A`, `B`, `C` e `D` foram construídos corretamente.
-O usuário deve verificar a unidade de contagem, deduplicação, definição de
-medicamento e evento, população comparadora e consistência dos totais.
+## When results may not be reliable
 
-ROR, PRR e IC podem ser estatisticamente instáveis quando as contagens são
-pequenas. A correção de continuidade e o shrinkage evitam operações indefinidas
-e reduzem parte da instabilidade, mas não criam informação nem substituem a
-avaliação da precisão e da relevância clínica.
+The library's validation confirms that the columns exist, are numeric,
+contain no missing or negative values, and that no row is entirely empty.
+This does not prove that `A`, `B`, `C` and `D` were constructed correctly.
+Users must check the counting unit, deduplication, drug and event
+definitions, comparator population and consistency of totals.
 
-O EBGM ajusta cinco hiperparâmetros usando todos os pares válidos. A biblioteca
-emite `GPSFitWarning` quando há menos de 50 pares válidos ou quando algum
-parâmetro termina a menos de 1% de um bound do otimizador. O limite de 50 é um
-diagnóstico operacional conservador, equivalente a 10 pares por hiperparâmetro,
-e não um corte formal estabelecido na literatura. O GPS foi desenvolvido para
-grandes tabelas de frequência, e implementações de referência também verificam
-convergência dentro do espaço de parâmetros e estabilidade entre soluções.
-Consulte [DuMouchel (1999)](https://doi.org/10.1080/00031305.1999.10474456) e
-[Canida e Ihrie (2017)](https://journal.r-project.org/articles/RJ-2017-063/).
+ROR, PRR and IC can be statistically unstable when counts are small. The
+continuity correction and shrinkage avoid undefined operations and reduce
+part of that instability, but they do not create information or replace an
+assessment of precision and clinical relevance. IC additionally trades some
+accuracy for speed relative to the full BCPNN posterior (see
+[Validation](#validation-against-reference-implementations)); for pairs
+with very few reports, treat IC as a fast screening approximation rather
+than a substitute for the full Bayesian posterior.
 
-Quando um warning aparecer, examine
-`resultado.attrs["gps_model"]`. Os campos `parameters_near_bounds` e
-`near_bound_parameters` indicam proximidade dos limites; `valid_pair_count`
-informa quantos pares sustentaram o ajuste. Não interprete o EBGM isoladamente:
-revise a construção da tabela, aumente e diversifique o conjunto de pares
-quando possível e realize análise de sensibilidade ou validação estatística
-independente antes de usar o resultado para decisão.
+EBGM fits five hyperparameters using all valid pairs. The library emits
+`GPSFitWarning` when there are fewer than 50 valid pairs or when a parameter
+ends up within 1% of an optimizer bound. The 50-pair threshold is a
+conservative operational diagnostic, equivalent to 10 pairs per
+hyperparameter, and not a formal cutoff established in the literature. GPS
+was developed for large frequency tables, and reference implementations also
+check convergence within the parameter space and stability across solutions.
+See [[4]](#references) and [[7]](#references).
+
+When a warning appears, inspect `result.attrs["gps_model"]`. The fields
+`parameters_near_bounds` and `near_bound_parameters` indicate proximity to
+the bounds; `valid_pair_count` reports how many pairs supported the fit;
+`n_star` reports the zero-truncation floor actually used (see
+[EBGM](#ebgm-empirical-bayes-geometric-mean) above). Do not interpret EBGM
+in isolation: review how the table was built, increase and diversify the
+set of pairs when possible, and run a sensitivity analysis or independent
+statistical validation before using the result for a decision.
+
+## References
+
+1. Rothman KJ, Lanes S, Sacks ST. The reporting odds ratio and its
+   advantages over the proportional reporting ratio. *Pharmacoepidemiol
+   Drug Saf.* 2004;13(8):519-523.
+   [doi:10.1002/pds.1001](https://doi.org/10.1002/pds.1001)
+2. van Puijenbroek EP, Bate A, Leufkens HGM, Lindquist M, Orre R, Egberts
+   ACG. A comparison of measures of disproportionality for signal detection
+   in spontaneous reporting systems for adverse drug reactions.
+   *Pharmacoepidemiol Drug Saf.* 2002;11(1):3-10.
+   [doi:10.1002/pds.668](https://doi.org/10.1002/pds.668)
+3. Bate A, Lindquist M, Edwards IR, Olsson S, Orre R, Lansner A, De Freitas
+   RM. A Bayesian neural network method for adverse drug reaction signal
+   generation. *Eur J Clin Pharmacol.* 1998;54(4):315-321.
+   [doi:10.1007/s002280050466](https://doi.org/10.1007/s002280050466)
+4. DuMouchel W. Bayesian data mining in large frequency tables, with an
+   application to the FDA spontaneous reporting system. *Am Stat.*
+   1999;53(3):177-190.
+   [doi:10.1080/00031305.1999.10474456](https://doi.org/10.1080/00031305.1999.10474456)
+5. Norén GN, Hopstadius J, Bate A. Shrinkage observed-to-expected ratios for
+   robust and transparent large-scale pattern discovery. *Stat Methods Med
+   Res.* 2013;22(1):57-69.
+   [doi:10.1177/0962280211403604](https://doi.org/10.1177/0962280211403604)
+6. Evans SJ, Waller PC, Davis S. Use of proportional reporting ratios (PRRs)
+   for signal generation from spontaneous adverse drug reaction reports.
+   *Pharmacoepidemiol Drug Saf.* 2001;10(6):483-486.
+   [doi:10.1002/pds.677](https://doi.org/10.1002/pds.677)
+7. Canida T, Ihrie J. openEBGM: An R implementation of the Gamma-Poisson
+   shrinker data mining model. *R J.* 2017;9(2):84-97.
+   [journal.r-project.org/articles/RJ-2017-063](https://journal.r-project.org/articles/RJ-2017-063/)
+8. DuMouchel W, Pregibon D. Empirical Bayes screening for multi-item
+   associations. In *Proceedings of the Seventh ACM SIGKDD International
+   Conference on Knowledge Discovery and Data Mining* (KDD '01), 2001,
+   pp. 67-76.
+   [doi:10.1145/502512.502526](https://doi.org/10.1145/502512.502526)

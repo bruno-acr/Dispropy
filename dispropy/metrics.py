@@ -124,15 +124,30 @@ def calculate_ic(
 
 
 def _negative_log_likelihood(
-    parameters: np.ndarray, observed: np.ndarray, expected: np.ndarray
+    parameters: np.ndarray, observed: np.ndarray, expected: np.ndarray, n_star: int
 ) -> float:
+    """Negative log-likelihood of the two-gamma GPS mixture, truncated at n_star.
+
+    Real disproportionality tables list only the pairs that were actually
+    reported, so the fitting sample implicitly excludes counts below
+    ``n_star`` (usually the pairs with zero reports). Fitting the raw,
+    untruncated mixture to such a sample biases the hyperparameters, since
+    it ignores that low counts were already filtered out of the input. The
+    truncation below divides each component's density by its probability
+    of exceeding ``n_star - 1``, following DuMouchel (1999, Eq. 12) as
+    adjusted by DuMouchel and Pregibon (2001) for data with small counts
+    removed. When the fitting sample already contains zero counts,
+    ``n_star`` is 0 and this is a no-op (log-survival of -1 is log(1) = 0).
+    """
     alpha1, beta1, alpha2, beta2, weight = parameters
     p1 = beta1 / (beta1 + expected)
     p2 = beta2 / (beta2 + expected)
+    log_f1 = stats.nbinom.logpmf(observed, alpha1, p1) - stats.nbinom.logsf(n_star - 1, alpha1, p1)
+    log_f2 = stats.nbinom.logpmf(observed, alpha2, p2) - stats.nbinom.logsf(n_star - 1, alpha2, p2)
     components = np.vstack(
         (
-            np.log(weight) + stats.nbinom.logpmf(observed, alpha1, p1),
-            np.log1p(-weight) + stats.nbinom.logpmf(observed, alpha2, p2),
+            np.log(weight) + log_f1,
+            np.log1p(-weight) + log_f2,
         )
     )
     value = -float(np.sum(special.logsumexp(components, axis=0)))
@@ -185,6 +200,16 @@ def calculate_ebgm(
     The prior is estimated jointly from all rows. At least two rows with a
     positive expected count are required. Fitted parameters and optimizer
     diagnostics are stored in ``result.attrs["gps_model"]``.
+
+    The hyperparameter likelihood is truncated at the smallest observed
+    count in the fitting sample (``n_star``, stored in
+    ``result.attrs["gps_model"]``), following DuMouchel and Pregibon (2001).
+    This matters because real disproportionality tables normally list only
+    the pairs that were actually reported, so counts below that minimum
+    (typically zero) were already excluded before the data reached this
+    function; fitting the untruncated mixture to such a sample would bias
+    all five hyperparameters. If the input includes zero-count rows,
+    ``n_star`` is 0 and the likelihood is unaffected.
     """
     a, b, c, d = get_contingency_arrays(df, a_col, b_col, c_col, d_col)
     expected = _expected_counts(a, b, c, d)
@@ -208,10 +233,11 @@ def calculate_ebgm(
 
     observed_fit = a.to_numpy()[valid]
     expected_fit = expected.to_numpy()[valid]
+    n_star = int(observed_fit.min())
     fit = optimize.minimize(
         _negative_log_likelihood,
         x0=initial,
-        args=(observed_fit, expected_fit),
+        args=(observed_fit, expected_fit, n_star),
         method="L-BFGS-B",
         bounds=_GPS_BOUNDS,
     )
@@ -275,6 +301,7 @@ def calculate_ebgm(
         "valid_pair_count": valid_pair_count,
         "recommended_min_valid_pairs": _GPS_MIN_VALID_PAIRS,
         "log_likelihood": float(-fit.fun),
+        "n_star": n_star,
     }
     return result
 
