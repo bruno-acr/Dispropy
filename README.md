@@ -86,28 +86,33 @@ below) and fixed in 0.4.0. If your table does include zero-count rows,
 Formulas were checked against independent R reference implementations, not
 just against `dispropy`'s own test suite, to confirm the numbers a
 researcher gets are not just internally consistent but actually correct.
+Two datasets were used: `PhViD`'s built-in simulated dataset (102,483
+drug-event pairs) and the real FDA CAERS dataset (17,189 dietary-supplement
+product-event pairs) that `openEBGM` ships with.
 
-- **ROR and PRR** were compared against `PhViD::ROR()` and `PhViD::PRR()`
-  on `PhViD`'s built-in simulated dataset (102,483 drug-event pairs).
-  Results matched to floating-point precision (correlation 1.000000,
-  maximum relative difference ~1e-14).
+- **ROR and PRR** were compared against `PhViD::ROR()` and `PhViD::PRR()` on
+  both datasets. Results matched to floating-point precision on the
+  simulated data (correlation 1.000000, maximum relative difference ~1e-14)
+  and on the real CAERS data (correlation 1.000000, maximum relative
+  difference ~5e-15).
 - **IC** was compared against a reimplementation of the full Dirichlet-based
-  BCPNN posterior of Bate et al. (1998) (as used by `PhViD::BCPNN`) on the
-  same dataset. The two correlate strongly (r ≈ 0.98) but are not
-  numerically identical, confirming the distinction described above:
-  divergence is largest for pairs with very few reports (mean |ΔIC| ≈ 0.47
-  for `A` between 1 and 2) and shrinks as counts grow (mean |ΔIC| ≈ 0.01 for
-  `A` above 100). The `ic025 > 0` signal call agrees with the full BCPNN's
-  equivalent for 99.3% of pairs.
-- **EBGM** was compared against the `openEBGM` package on the real FDA
-  CAERS dataset (17,189 dietary-supplement product-event pairs) that
-  `openEBGM` ships with. This comparison is what surfaced the `n_star`
-  truncation bug described above: before the fix, EBGM correlated at only
-  0.20 with the reference, and 23.5% of pairs were flagged as `EB05 > 2`
-  signals that should not have been. After adding the truncation, `qn`,
-  `ebgm`, `eb05` and `eb95` all correlate above 0.9999 with `openEBGM`, and
-  agreement on the `EBGM > 2` signal call is 99.9%. Remaining differences
-  are consistent with ordinary optimizer precision, not a systematic bias.
+  BCPNN posterior of Bate et al. (1998) (as used by `PhViD::BCPNN`) on both
+  datasets. The two correlate strongly but are not numerically identical,
+  confirming the distinction described above: r ≈ 0.98 on the simulated
+  data (99.3% agreement on the `ic025 > 0` signal call) and r ≈ 0.92 on the
+  real CAERS data (99.4% signal agreement). The divergence is larger on
+  CAERS because its counts are mostly small (`A` between 1 and 54), and
+  that is exactly where the two approximations diverge most: mean |ΔIC| ≈
+  0.47 for `A` between 1 and 2 versus ≈ 0.01 for `A` above 100 in the
+  simulated data.
+- **EBGM** was compared against the `openEBGM` package on the real CAERS
+  data. This comparison is what surfaced the `n_star` truncation bug
+  described above: before the fix, EBGM correlated at only 0.20 with the
+  reference, and 23.5% of pairs were flagged as `EB05 > 2` signals that
+  should not have been. After adding the truncation, `qn`, `ebgm`, `eb05`
+  and `eb95` all correlate above 0.9999 with `openEBGM`, and agreement on
+  the `EBGM > 2` signal call is 99.9%. Remaining differences are consistent
+  with ordinary optimizer precision, not a systematic bias.
 
 ## Installation
 
