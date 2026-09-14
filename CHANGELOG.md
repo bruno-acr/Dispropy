@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0
+
+- First stable release. No functional changes since 0.5.0: the public API
+  (`calculate_ror`, `calculate_prr`, `calculate_ic`, `calculate_ebgm`,
+  `calculate_disproportionality`) is now considered stable.
+
 ## 0.5.0
 
 - **Breaking:** `calculate_ror`, `calculate_prr` and
