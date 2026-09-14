@@ -327,3 +327,17 @@ statistical validation before using the result for a decision.
    Conference on Knowledge Discovery and Data Mining* (KDD '01), 2001,
    pp. 67-76.
    [doi:10.1145/502512.502526](https://doi.org/10.1145/502512.502526)
+
+## Authors and Collaborators
+
+### Creators
+
+- Bruno Ramalho
+- Lara Riboli Bortolato
+
+### Collaborators
+
+- Leonardo Regis Leira Pereira
+- Fabiana Rossi Varallo
+- Maria Olívia Barboza Zanetti
+- Marilia Almeida de Almeida Campos
