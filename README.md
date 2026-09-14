@@ -167,13 +167,17 @@ product-event pairs) that `openEBGM` ships with.
 
 ## Installation
 
+`dispropy` is not yet published on PyPI. Install it directly from GitHub:
+
 ```bash
-pip install -e .
+pip install git+https://github.com/bruno-acr/Dispropy.git
 ```
 
-For development:
+For local development:
 
 ```bash
+git clone https://github.com/bruno-acr/Dispropy.git
+cd Dispropy
 pip install -e ".[dev]"
 pytest
 ```
