@@ -340,4 +340,4 @@ statistical validation before using the result for a decision.
 - Leonardo Regis Leira Pereira
 - Fabiana Rossi Varallo
 - Maria Olívia Barboza Zanetti
-- Marilia Almeida de Almeida Campos
+- Marilia Silveira de Almeida Campos
